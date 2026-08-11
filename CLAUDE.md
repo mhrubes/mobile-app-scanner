@@ -35,17 +35,42 @@ Po restartu Claude Code / novém terminálu se PATH už chová normálně a expo
 
 ## Architektura
 
-- `src/scan.js` — sdílená logika scanu (`runScan`, `listRuns`, `getRunData`), volají ji jak CLI (`src/index.js`), tak server (`src/server.js`). Jakoukoliv změnu chování scanu dělat tady, ne duplikovat v obou vstupních bodech.
+Kód je rozdělený na malé jednoúčelové moduly — při dalších úpravách hledat správné místo mezi nimi, neduplikovat logiku napříč soubory a nevracet vše zpátky do pár velkých souborů.
+
+### Backend (`src/`, CommonJS)
+
 - `src/android.js` / `src/ios.js` — komunikace se zařízením (`adb` / `idevice_id`+`ideviceinstaller`+`idevicename` přes `child_process`).
 - `src/playStore.js` / `src/appStore.js` — dohledání názvu/popisu/kategorie (`google-play-scraper`, `itunes.apple.com/lookup`).
-- `src/server.js` — čistý Node `http` modul (žádný Express), statické servírování `public/`, JSON API a SSE endpointy pro scan:
+- `src/enrich.js` — `enrichAndroid`/`enrichIos`: pro seznam balíčků z zařízení dohledá store data s prodlevou mezi dotazy (`DELAY_MS`).
+- `src/categorize.js` — `groupByCategory`: seskupení aplikací podle žánru, `UNCATEGORIZED` fallback.
+- `src/filenames.js` — `sanitizeForFilename`, `formatTimestamp` (formát `ddmmyyyy_hhmmss`).
+- `src/runStore.js` — souborová vrstva pro výsledky scanu: `writeOutputs` (zápis `data.json`/`data.txt` do `output/<runId>/`), `writeProcessLog` (zápis `process.json`), `listRuns`, `getRunData`, `deleteRun`, `resolveRunDir` (validace `runId` proti path traversal), `OUTPUT_DIR`.
+- `src/scan.js` — tenký orchestrátor: `runScan()` skládá dohromady android/ios + enrich + runStore. Re-exportuje `listRuns`/`getRunData`/`deleteRun`/`OUTPUT_DIR` z `runStore.js`, aby volající (`index.js`, `server.js`) měli jeden vstupní bod. Jakoukoliv změnu **průběhu** scanu dělat tady, změnu **ukládání** v `runStore.js`.
+- `src/scanSession.js` — třída `ScanSession`: stav jednoho běžícího scanu (`lines`, `subscribers`, `finished`) + `broadcast`/`logProgress`/`finish`. Server drží jednu instanci v modulové proměnné `session`, díky čemu se k běžícímu scanu může připojit víc SSE klientů najednou (viz `GET /api/scan/stream`).
+- `src/staticServer.js` — `createStaticServer(publicDir)` vrací funkci pro servírování `public/` (MIME typy, ochrana proti path traversal).
+- `src/server.js` — jen HTTP routing, deleguje na `scan.js` / `scanSession.js` / `staticServer.js`:
   - `GET /api/runs` — seznam běhů (souhrn).
   - `GET /api/runs/:id` — detail běhu vč. `processLog`.
-  - `DELETE /api/runs/:id` — smaže celou složku běhu (`scan.js#deleteRun`, validace `runId` přes `resolveRunDir` proti path traversal).
+  - `DELETE /api/runs/:id` — smaže celou složku běhu.
   - `GET /api/scan` — spustí nový scan (odmítne, pokud jeden už běží).
   - `GET /api/scan/status` — `{ running }`, pro zjištění stavu bez otevření SSE spojení.
-  - `GET /api/scan/stream` — připojení k **už běžícímu** scanu: přehraje dosavadní řádky logu a pak streamuje živě dál. Umožňuje, aby se uživatel po odchodu ze stránky a návratu napojil na scan, který mezitím běžel na serveru dál (stav drží modulová proměnná `currentScan`, ne per-request).
-- `public/` — vanilla JS/HTML/CSS, žádný framework, žádný build krok. `theme.js` řeší přepínač světlý/tmavý režim (sdílený mezi `index.html` a `detail.html`), `app.js` hlavní stránka, `detail.js` detail běhu.
+  - `GET /api/scan/stream` — připojení k **už běžícímu** scanu: přehraje dosavadní řádky logu a streamuje živě dál. Umožňuje, aby se uživatel po odchodu ze stránky a návratu napojil na scan, který mezitím běžel na serveru dál.
+- `src/index.js` — tenký CLI vstupní bod, volá `runScan` ze `scan.js`.
+
+### Frontend (`public/`, ES moduly v prohlížeči — žádný bundler, žádný build krok)
+
+- `public/theme.js` — klasický (ne-module) skript, přepínač světlý/tmavý režim, sdílený beze změny oběma stránkami.
+- `public/js/format.js` — `formatDate`.
+- `public/js/confirmDialog.js` — `confirmDialog(message)`, vlastní potvrzovací modal (Promise<boolean>) místo nativního `confirm()`.
+- `public/js/api.js` — jediné místo, které volá `fetch`/`EventSource` na `/api/*`; ostatní moduly importují funkce odsud, ne `fetch` napřímo.
+- `public/js/collapsible.js` — `buildCollapsibleCard(...)`, sdílený stavební blok pro sbalovací karty (kategorie i log průběhu).
+- `public/js/runList.js` — hlavní stránka: `loadRuns(container)`, řádek běhu, tlačítko smazání, inline rozbalení `process.json`.
+- `public/js/scanClient.js` — `initScanClient({...})`: spuštění nového scanu i navázání na již běžící (`/api/scan`, `/api/scan/stream`), společná logika streamování do log boxu.
+- `public/js/detailCards.js` — detail: `renderCards`, `buildProcessLogCard`, `setAllCollapsed`.
+- `public/js/search.js` — `wireSearch({...})`, filtrování karet/aplikací podle zadaného textu.
+- `public/app.js` / `public/detail.js` — tenké vstupní body (`<script type="module">`), jen najdou DOM elementy a zavolají funkce z `public/js/*`.
+
+Import cesty v `public/js/*` musí mít explicitní příponu `.js` (prohlížeč, na rozdíl od Node, žádnou příponu sám nedohledává).
 
 ## Konvence, které dodržet při dalších úpravách
 

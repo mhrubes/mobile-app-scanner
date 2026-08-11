@@ -1,116 +1,65 @@
 const http = require('http')
-const fs = require('fs')
 const path = require('path')
 const { exec } = require('child_process')
 
 const { runScan, listRuns, getRunData, deleteRun } = require('./scan')
+const { ScanSession } = require('./scanSession')
+const { createStaticServer } = require('./staticServer')
 
 const PORT = 4321
 const PUBLIC_DIR = path.join(__dirname, '..', 'public')
 
-const MIME = {
-    '.html': 'text/html; charset=utf-8',
-    '.js': 'text/javascript; charset=utf-8',
-    '.css': 'text/css; charset=utf-8',
-    '.json': 'application/json; charset=utf-8'
-}
+const serveStatic = createStaticServer(PUBLIC_DIR)
 
-let currentScan = null // { lines: [], subscribers: Set<res>, finished: boolean }
-
-function broadcast(event, data) {
-    const payload = `event: ${event}\ndata: ${JSON.stringify(data)}\n\n`
-    for (const res of currentScan.subscribers) {
-        res.write(payload)
-    }
-}
-
-function addSubscriber(res) {
-    currentScan.subscribers.add(res)
-    res.on('close', () => currentScan?.subscribers.delete(res))
-}
+let session = null // ScanSession | null
 
 function sendJson(res, status, data) {
     res.writeHead(status, { 'Content-Type': 'application/json; charset=utf-8' })
     res.end(JSON.stringify(data))
 }
 
-function serveStatic(req, res, urlPath) {
-    const relative = urlPath === '/' ? 'index.html' : urlPath.slice(1)
-    const filePath = path.normalize(path.join(PUBLIC_DIR, relative))
-    if (!filePath.startsWith(PUBLIC_DIR)) {
-        res.writeHead(403)
-        res.end('Forbidden')
-        return
-    }
-    fs.readFile(filePath, (err, content) => {
-        if (err) {
-            res.writeHead(404, { 'Content-Type': 'text/plain; charset=utf-8' })
-            res.end('Nenalezeno')
-            return
-        }
-        const ext = path.extname(filePath)
-        res.writeHead(200, { 'Content-Type': MIME[ext] || 'application/octet-stream' })
-        res.end(content)
-    })
-}
-
-function handleStartScan(req, res) {
+function openSseResponse(res) {
     res.writeHead(200, {
         'Content-Type': 'text/event-stream; charset=utf-8',
         'Cache-Control': 'no-cache',
         Connection: 'keep-alive'
     })
+}
 
-    if (currentScan && !currentScan.finished) {
+function handleStartScan(req, res) {
+    openSseResponse(res)
+
+    if (session && !session.finished) {
         res.write(`event: error\ndata: ${JSON.stringify({ message: 'Scan už probíhá, počkej na dokončení.' })}\n\n`)
         res.end()
         return
     }
 
     const includeSystem = new URL(req.url, `http://localhost:${PORT}`).searchParams.get('all') === 'true'
-    currentScan = { lines: [], subscribers: new Set(), finished: false }
-    addSubscriber(res)
+    session = new ScanSession()
+    session.addSubscriber(res)
 
-    const onProgress = (msg) => {
-        currentScan.lines.push(msg)
-        broadcast('progress', { message: msg })
-    }
-
-    runScan({ includeSystem, onProgress })
-        .then((result) => {
-            currentScan.finished = true
-            broadcast('done', result)
-        })
-        .catch((err) => {
-            currentScan.finished = true
-            broadcast('error', { message: err.message })
-        })
-        .finally(() => {
-            for (const subscriber of currentScan.subscribers) subscriber.end()
-            currentScan.subscribers.clear()
-        })
+    runScan({ includeSystem, onProgress: (msg) => session.logProgress(msg) })
+        .then((result) => session.finish('done', result))
+        .catch((err) => session.finish('error', { message: err.message }))
 }
 
 function handleScanStatus(req, res) {
-    sendJson(res, 200, { running: !!(currentScan && !currentScan.finished) })
+    sendJson(res, 200, { running: !!(session && !session.finished) })
 }
 
 function handleJoinScan(req, res) {
-    res.writeHead(200, {
-        'Content-Type': 'text/event-stream; charset=utf-8',
-        'Cache-Control': 'no-cache',
-        Connection: 'keep-alive'
-    })
+    openSseResponse(res)
 
-    if (!currentScan || currentScan.finished) {
+    if (!session || session.finished) {
         res.end()
         return
     }
 
-    for (const line of currentScan.lines) {
+    for (const line of session.lines) {
         res.write(`event: progress\ndata: ${JSON.stringify({ message: line })}\n\n`)
     }
-    addSubscriber(res)
+    session.addSubscriber(res)
 }
 
 const server = http.createServer((req, res) => {
