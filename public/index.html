@@ -1,0 +1,58 @@
+<!doctype html>
+<html lang="cs">
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Mobile App Scanner</title>
+    <script>
+        (function () {
+            var stored = localStorage.getItem('theme')
+            if (stored) document.documentElement.dataset.theme = stored
+        })()
+    </script>
+    <link rel="stylesheet" href="/style.css" />
+</head>
+<body>
+    <header>
+        <h1>Mobile App Scanner</h1>
+        <div class="header-actions">
+            <label class="checkbox"><input type="checkbox" id="includeSystem" /> vč. systémových aplikací</label>
+            <button id="scanBtn">Spustit scan</button>
+            <button id="themeToggle" class="theme-toggle" aria-label="Přepnout světlý/tmavý režim"></button>
+        </div>
+    </header>
+    <main>
+        <details class="info-box">
+            <summary>Jak připravit telefon před připojením kabelem</summary>
+            <div class="info-columns">
+                <div>
+                    <h3>Android</h3>
+                    <ol>
+                        <li>Nastavení → O telefonu → 7× klepnout na "Číslo sestavení" (odemkne vývojářské možnosti)</li>
+                        <li>Nastavení → Možnosti pro vývojáře → zapnout "Ladění USB"</li>
+                        <li>Připojit kabelem, na telefonu potvrdit "Povolit ladění USB?" (zaškrtnout "vždy z tohoto počítače")</li>
+                        <li>Dialog s výběrem USB režimu (přenos souborů, jen nabíjet...) můžeš nechat na čemkoliv — na ladění to nemá vliv</li>
+                    </ol>
+                </div>
+                <div>
+                    <h3>iPhone</h3>
+                    <ol>
+                        <li>Připojit kabelem</li>
+                        <li>Na displeji potvrdit "Trust This Computer" (Důvěřovat tomuto počítači?) a zadat PIN</li>
+                        <li>Žádné další nastavení není potřeba</li>
+                    </ol>
+                    <p class="note">Pozn.: bez jailbreaku jde přečíst jen aplikace nainstalované uživatelem, ne systémové Apple aplikace.</p>
+                </div>
+            </div>
+        </details>
+        <div id="log" class="log">
+            <button id="logCloseBtn" class="log-close" aria-label="Zavřít log" hidden>&times;</button>
+            <div id="logText" class="log-text"></div>
+        </div>
+        <h2>Předchozí běhy</h2>
+        <div id="runList" class="run-list"></div>
+    </main>
+    <script src="/theme.js"></script>
+    <script src="/app.js"></script>
+</body>
+</html>

@@ -1,0 +1,14 @@
+{
+  "name": "mobile-app-scanner",
+  "version": "1.0.0",
+  "description": "Edukativni CLI - precte seznam aplikaci z pripojeneho mobilu (Android/iOS) pres kabel a ulozi vcetne popisu z obchodu do JSON/TXT.",
+  "main": "src/index.js",
+  "type": "commonjs",
+  "scripts": {
+    "start": "node ./src/index.js",
+    "dev": "node ./src/server.js"
+  },
+  "dependencies": {
+    "google-play-scraper": "^10.0.0"
+  }
+}

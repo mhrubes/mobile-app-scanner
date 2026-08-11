@@ -1,0 +1,41 @@
+<!doctype html>
+<html lang="cs">
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Detail běhu — Mobile App Scanner</title>
+    <script>
+        (function () {
+            var stored = localStorage.getItem('theme')
+            if (stored) document.documentElement.dataset.theme = stored
+        })()
+    </script>
+    <link rel="stylesheet" href="/style.css" />
+</head>
+<body>
+    <header>
+        <h1>Detail běhu</h1>
+        <div class="header-actions">
+            <button id="themeToggle" class="theme-toggle" aria-label="Přepnout světlý/tmavý režim"></button>
+        </div>
+    </header>
+    <main>
+        <a class="back-link" href="/">&larr; zpět na seznam</a>
+        <div id="summary" class="run-summary"></div>
+        <div id="processLogContainer"></div>
+        <div class="toolbar">
+            <button id="expandAllBtn" class="secondary">Rozbalit vše</button>
+            <button id="collapseAllBtn" class="secondary">Zabalit vše</button>
+            <div class="search-wrap">
+                <input type="text" id="searchInput" class="search-input" placeholder="Hledat aplikaci…" />
+                <button id="searchClearBtn" class="search-clear" aria-label="Vymazat hledání" hidden>&times;</button>
+            </div>
+            <button id="searchBtn" class="secondary" disabled>Hledat</button>
+        </div>
+        <div id="searchEmpty" class="empty" hidden>Žádné výsledky.</div>
+        <div id="cards" class="cards"></div>
+    </main>
+    <script src="/theme.js"></script>
+    <script src="/detail.js"></script>
+</body>
+</html>
